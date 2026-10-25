@@ -7,6 +7,23 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'lib\LatestSoftware.ps1')
 . (Join-Path $root 'lib\DeploymentPipeline.ps1')
 function Assert {param([bool]$Condition,[string]$Message)if(-not $Condition){throw $Message}}
+$displayState=@{
+ Rows=@{
+  '0'=[pscustomobject]@{Index=0;Label='Mozilla Firefox';Download='Bereit';Install='Wird installiert';Done=$false}
+  '1'=[pscustomobject]@{Index=1;Label='HG-Fernwartung (Download)';Download='Laedt / prueft';Install='Wartet';Done=$false}
+ }
+ ReadyCount=1;Total=2;Interactive=$false;LastDisplay='';LastRows=@{};DisplayTop=$null
+}
+$lines=@(Get-HGPipelineDisplayLines $displayState)
+Assert (@($lines | Where-Object {$_.Length -gt 80}).Count -eq 0) 'Laufanzeige muss in 80 Zeichen passen'
+Assert (($lines -join ' ') -match 'Mozilla Firefox\s+Bereit\s+Wird installiert') 'Download und Installation muessen je Programm nebeneinander stehen'
+$first=@(Show-HGPipelineDashboard $displayState 6>&1)
+$unchanged=@(Show-HGPipelineDashboard $displayState 6>&1)
+Assert ($first.Count -gt 0 -and $unchanged.Count -eq 0) 'Unveraenderter Status darf die Ausgabe nicht fluten'
+$displayState.Rows['1'].Download='Bereit'
+$changed=@(Show-HGPipelineDashboard $displayState 6>&1)
+Assert ($changed.Count -eq 1 -and [string]$changed[0] -match 'HG-Fernwartung') 'Nur geaenderte Zeile im Textmodus ausgeben'
+Write-Host 'PASS: Kompakte Statusspalten, 80-Zeichen-Breite und keine doppelten Statusausgaben'
 $fixture=Join-Path $PSScriptRoot ('pipeline-fixture-'+[guid]::NewGuid().ToString('N'))
 $lib=Join-Path $fixture 'lib'
 $null=New-Item -ItemType Directory -Path $lib -Force
@@ -17,6 +34,7 @@ $script:fixtureRoot=Split-Path $PSScriptRoot -Parent
 function Set-TestEvent {param($Name) [IO.File]::WriteAllText((Join-Path $script:fixtureRoot $Name),[string][DateTime]::UtcNow.Ticks)}
 function New-HGPreparedSoftware {
  param($Software,$WorkRoot)
+ if($ProgressPreference -ne 'SilentlyContinue'){throw 'Technische Download-Fortschrittsanzeigen sind nicht deaktiviert'}
  $number=switch($Software){'7Zip'{1};'Chrome'{2};'Firefox'{3}}
  Set-TestEvent ('D'+$number+'start')
  if($number -eq 2){
@@ -96,5 +114,3 @@ finally {
  if(-not $resolved.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)){throw 'Ungueltiger Testpfad'}
  Remove-Item -LiteralPath $resolved -Recurse -Force
 }
-
-

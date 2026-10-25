@@ -109,9 +109,7 @@ function Get-HGSoftwareState {
 
 function Write-HGSoftwareLog {
     param([string]$Message, [string]$Software)
-    Write-Host "${Software}: $Message"
+    if ($env:HG_DEPLOYMENT_QUIET -ne '1') { Write-Host "${Software}: $Message" }
     $softwareLogPath = if ($env:HG_DEPLOYMENT_LOG) { $env:HG_DEPLOYMENT_LOG } else { Join-Path $env:TEMP 'log.txt' }
     Add-Content -LiteralPath $softwareLogPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - ${Software}: $Message" -ErrorAction Stop
 }
-
-

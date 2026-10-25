@@ -82,12 +82,12 @@ try {
     Assert ($script:runCount -eq 0) 'Alle/Keine duerfen keine Installation starten'
     Run-Menu -Answers @('q')
     Assert ($script:runCount -eq 0) 'Abbruch hat Installer gestartet'
-    Run-Menu -Answers @('y', 'n', 'q')
-    Assert ($script:runCount -eq 0) 'Ohne Bestaetigung gestartet'
-    Run-Menu -Answers @('0', 'x', '9', 'y', 'j', '')
-    Assert ($script:runCount -eq 1) 'Bestaetigte Auswahl nicht gestartet'
+    Run-Menu -Answers @('y', '')
+    Assert ($script:runCount -eq 1) 'Y muss ohne zweite Bestaetigung sofort starten'
+    Run-Menu -Answers @('0', 'x', '9', 'y', '')
+    Assert ($script:runCount -eq 1) 'Direkte Auswahl nicht gestartet'
     Assert ($script:chosen[-1].Name -eq 'WindowsUpdates') 'Nummer 9 wurde nicht aktiviert'
-    Run-Menu -Answers @('4','4','4','y','j','')
+    Run-Menu -Answers @('4','4','4','y','')
     Assert (@($script:chosen | Where-Object Name -eq 'MozillaFirefox').Count -eq 1) 'Schnelle wiederholte Tastendruecke muessen sofort umschalten'
     Run-Menu -Answers @('1', '2', '3', '6', '8', 'y', 'q')
     Assert ($script:runCount -eq 0) 'Leere Auswahl gestartet'
@@ -96,7 +96,7 @@ try {
     try { Start-ClientDeployment -ScriptDirectory $fixture -LogDirectory $fixture } catch { $caught = $_.Exception.Message }
     Assert ($caught -match 'Administratorrechte') 'Adminpruefung fehlt'
     Assert ($script:transcriptStarts -eq 0) 'Sitzung ohne Admin gestartet'
-    Write-Host 'PASS: Abbruch, Bestaetigung, ungueltige Eingaben, Auswahl, leere Auswahl und Adminpruefung'
+    Write-Host 'PASS: Abbruch, Sofortstart, ungueltige Eingaben, Auswahl, leere Auswahl und Adminpruefung'
 }
 finally {
     foreach ($name in $fixtureNames) {

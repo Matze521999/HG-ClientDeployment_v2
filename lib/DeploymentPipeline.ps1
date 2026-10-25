@@ -1,4 +1,63 @@
 # Ein Download-Worker; der aufrufende Prozess installiert in fester Reihenfolge.
+function Get-HGPipelineDisplayLines {
+    param([hashtable]$State)
+    $rows = @($State.Rows.Values | Sort-Object Index)
+    $done = @($rows | Where-Object Done).Count
+    '  HG  /  CLIENT DEPLOYMENT'
+    '  Downloads und Installationen'
+    '  ' + ('-' * 74)
+    ('  {0,-28} {1,-18} {2,-22}' -f 'PROGRAMM','DOWNLOAD','INSTALLATION')
+    '  ' + ('-' * 74)
+    foreach ($row in $rows) {
+        $label = $row.Label -replace ' \(Download\)$',''
+        if ($label.Length -gt 28) { $label = $label.Substring(0,25) + '...' }
+        '  {0,-28} {1,-18} {2,-22}' -f $label,$row.Download,$row.Install
+    }
+    '  ' + ('-' * 74)
+    '  Dateien verarbeitet: {0}/{1}    Aufgaben erledigt: {2}/{3}' -f $State.ReadyCount,$State.Total,$done,$rows.Count
+    '  Details und Fehlermeldungen stehen im Abschluss und im Protokoll.'
+}
+
+function Show-HGPipelineDashboard {
+    param([hashtable]$State)
+    $lines = @(Get-HGPipelineDisplayLines $State)
+    $signature = $lines -join [Environment]::NewLine
+    if ($signature -eq $State.LastDisplay) { return }
+    if ($State.Interactive) {
+        try {
+            if ($Host.UI.RawUI.WindowSize.Width -lt 79 -or $Host.UI.RawUI.WindowSize.Height -lt ($lines.Count + 2)) {
+                $State.Interactive = $false
+            }
+            else {
+                if ($null -eq $State.DisplayTop) { Clear-Host; $State.DisplayTop = $Host.UI.RawUI.CursorPosition.Y }
+                $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates(0, $State.DisplayTop)
+                for ($i = 0; $i -lt $lines.Count; $i++) {
+                    $color = if ($i -lt 2) { 'Cyan' } elseif ($i -eq 3) { 'White' }
+                        elseif ($lines[$i] -match 'Fehler') { 'Red' }
+                        elseif ($lines[$i] -match 'Laedt|Wird') { 'Cyan' }
+                        elseif ($lines[$i] -match 'Installiert|Aktuell|Datei bereit|Datei vorhanden') { 'Green' }
+                        else { 'Gray' }
+                    Write-Host $lines[$i].PadRight(77) -ForegroundColor $color
+                }
+            }
+        }
+        catch { $State.Interactive = $false } # Anzeige darf den Ablauf nicht abbrechen.
+    }
+    if (-not $State.Interactive) {
+        if (-not $State.LastDisplay) { foreach ($line in $lines) { Write-Host $line } }
+        else {
+            foreach ($row in $State.Rows.Values | Sort-Object Index) {
+                $text = '  {0}: Download {1} | {2}' -f $row.Label,$row.Download,$row.Install
+                if ($State.LastRows[[string]$row.Index] -ne $text) { Write-Host $text }
+            }
+        }
+    }
+    foreach ($row in $State.Rows.Values) {
+        $State.LastRows[[string]$row.Index] = '  {0}: Download {1} | {2}' -f $row.Label,$row.Download,$row.Install
+    }
+    $State.LastDisplay = $signature
+}
+
 function Get-HGPipelineSoftware {
     param([string]$Name)
     switch ($Name) {
@@ -13,7 +72,9 @@ function Start-HGDownloadWorker {
     Start-Job -ArgumentList $LibraryPath,$WorkRoot,$LogPath,$planJson -ScriptBlock {
         param($LibraryPath,$WorkRoot,$LogPath,$PlanJson)
         $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
         $env:HG_DEPLOYMENT_LOG = $LogPath
+        $env:HG_DEPLOYMENT_QUIET = '1'
         . $LibraryPath
         $tasks = ConvertFrom-Json -InputObject $PlanJson
         foreach ($task in $tasks) {
@@ -32,28 +93,42 @@ function Receive-HGDownloadMessages {
     param([hashtable]$State)
     if (-not $State.Job) { return }
     foreach ($message in @(Receive-Job -Job $State.Job -ErrorAction SilentlyContinue -InformationAction SilentlyContinue)) {
-        if ($message.Event -eq 'DownloadStart') { $State.DownloadLabel = $message.Label }
+        if ($message.Event -eq 'DownloadStart') {
+            $State.Rows[[string]$message.Index].Download = 'Laedt / prueft'
+        }
         elseif ($message.Event -in @('Ready','Failed')) {
             $State.Pending[[string]$message.Index] = $message
             $State.ReadyCount++
+            $State.Rows[[string]$message.Index].Download = if ($message.Event -eq 'Failed') { 'Fehler' } elseif ($message.Preparation.Status -eq 'BereitsAktuell') { 'Nicht noetig' } else { 'Bereit' }
         }
     }
-    $percent = if ($State.Total -gt 0) { [int](100 * $State.ReadyCount / $State.Total) } else { 100 }
-    $status = if ($State.ReadyCount -eq $State.Total) { 'Alle Downloads verarbeitet' } else { "$($State.ReadyCount)/$($State.Total) bereit | $($State.DownloadLabel)" }
-    Write-Progress -Id 10 -Activity 'DOWNLOADS - nacheinander im Hintergrund' -Status $status -PercentComplete $percent
+    Show-HGPipelineDashboard $State
 }
 
 function Invoke-HGDeploymentPipeline {
     [CmdletBinding()]
     param([object[]]$Options, [string]$ScriptDirectory)
     $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
     $job = $null; $workRoot = $null
     $previousLog = $env:HG_DEPLOYMENT_LOG
-    $state = @{ Job = $null; Pending = @{}; Total = 0; ReadyCount = 0; DownloadLabel = 'Wird gestartet' }
+    $previousQuiet = $env:HG_DEPLOYMENT_QUIET
+    $env:HG_DEPLOYMENT_QUIET = '1'
+    $state = @{
+        Job = $null; Pending = @{}; Total = 0; ReadyCount = 0; Rows = @{}
+        Interactive = (-not [Console]::IsOutputRedirected); DisplayTop = $null
+        LastDisplay = ''; LastRows = @{}
+    }
     try {
         $plan = @()
         for ($i = 0; $i -lt $Options.Count; $i++) {
             $software = Get-HGPipelineSoftware $Options[$i].Name
+            if ($Options[$i].Selected) {
+                $state.Rows[[string]$i] = [pscustomobject]@{
+                    Index = $i; Label = $Options[$i].Label; Download = $(if ($software) { 'Wartet' } else { '-' })
+                    Install = 'Wartet'; Done = $false
+                }
+            }
             $scriptPath = Join-Path $ScriptDirectory ('Install-' + $Options[$i].Name + '.ps1')
             if ($Options[$i].Selected -and $software -and (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
                 $plan += [pscustomobject]@{ Index = $i; Software = $software; Label = $Options[$i].Label }
@@ -72,6 +147,7 @@ function Invoke-HGDeploymentPipeline {
             $job = Start-HGDownloadWorker -LibraryPath (Join-Path $ScriptDirectory 'lib\LatestSoftware.ps1') -Plan $plan -WorkRoot $workRoot -LogPath $downloadLog
             $state.Job = $job; $state.Total = $plan.Count
         }
+        Show-HGPipelineDashboard $state
         for ($i = 0; $i -lt $Options.Count; $i++) {
             $option = $Options[$i]; $status = 'Uebersprungen'; $detail = 'Nicht ausgewaehlt'; $version = ''; $reboot = $false
             $preparation = $null
@@ -85,35 +161,47 @@ function Invoke-HGDeploymentPipeline {
                             Receive-HGDownloadMessages $state
                             if ($state.Pending.ContainsKey([string]$i)) { break }
                             if ($job.State -in @('Completed','Failed','Stopped')) { throw "Download-Worker beendet, aber $($option.Label) nicht bereit: $($job.ChildJobs[0].JobStateInfo.Reason)" }
-                            Write-Progress -Id 20 -Activity 'INSTALLATION - jeweils ein Programm' -Status "Warte auf Download: $($option.Label)"
+                            $state.Rows[[string]$i].Install = 'Wartet auf Datei'
+                            Show-HGPipelineDashboard $state
                             Start-Sleep -Milliseconds 100
                         }
                         $message = $state.Pending[[string]$i]
                         $state.Pending.Remove([string]$i)
                         if ($message.Event -eq 'Failed') { Write-Verbose $message.Diagnostics; throw $message.Error }
                         $preparation = $message.Preparation
-                        Write-Host "`n  > $($option.Label)" -ForegroundColor Cyan
-                        Write-Progress -Id 20 -Activity 'INSTALLATION - jeweils ein Programm' -Status $option.Label
+                        $state.Rows[[string]$i].Install = if ($preparation.Status -eq 'BereitsAktuell') { 'Aktuell' } elseif ($preparation.DownloadOnly) { 'Wird bereitgelegt' } else { 'Wird installiert' }
+                        Show-HGPipelineDashboard $state
                         $onWaiting = { Receive-HGDownloadMessages $state }
                         $result = Complete-HGPreparedSoftware -Preparation $preparation -OnWaiting $onWaiting
                         $status = $result.Status; $version = [string]$result.Version; $reboot = $result.RebootRequired
                         $detail = if ($result.Details) { $result.Details } else { "Version: $version; Neustart erforderlich: $reboot" }
                     }
                     else {
-                        Write-Host "`n  > $($option.Label)" -ForegroundColor Cyan
-                        & $scriptPath | Out-Host
+                        $state.Rows[[string]$i].Install = 'Wird ausgefuehrt'
+                        Show-HGPipelineDashboard $state
+                        $taskLog = if ($env:HG_DEPLOYMENT_LOG) { $env:HG_DEPLOYMENT_LOG } else { Join-Path $env:TEMP 'log.txt' }
+                        & $scriptPath 6>&1 | Out-String | Add-Content -LiteralPath $taskLog
                         $status = 'Durchgelaufen'; $detail = 'Skript ohne gemeldeten Fehler beendet.'
                     }
-                    Write-Host "    $status $version" -ForegroundColor Green
+                    $state.Rows[[string]$i].Install = switch ($status) {
+                        'BereitsAktuell' { 'Aktuell' }
+                        'BereitsHeruntergeladen' { 'Datei vorhanden' }
+                        'Heruntergeladen' { 'Datei bereit' }
+                        'NeustartAusstehend' { 'Neustart offen' }
+                        default { $status }
+                    }
                 }
                 catch {
                     $status = 'Fehlgeschlagen'; $detail = $_.Exception.Message
                     Write-Verbose ($_ | Out-String)
-                    Write-Host "    Fehler: $detail" -ForegroundColor Red
+                    if ($state.Rows[[string]$i].Download -eq 'Wartet') { $state.Rows[[string]$i].Download = 'Nicht geladen' }
+                    $state.Rows[[string]$i].Install = 'Fehler'
                 }
                 finally {
                     if ($preparation) { Remove-HGPreparedSoftware $preparation }
+                    $state.Rows[[string]$i].Done = $true
                     Receive-HGDownloadMessages $state
+                    Show-HGPipelineDashboard $state
                 }
             }
             $timer.Stop()
@@ -125,9 +213,8 @@ function Invoke-HGDeploymentPipeline {
             if ($job.State -notin @('Completed','Failed','Stopped')) { Stop-Job -Job $job }
             Remove-Job -Job $job -Force
         }
-        Write-Progress -Id 10 -Activity 'Downloads' -Completed
-        Write-Progress -Id 20 -Activity 'Installation' -Completed
         $env:HG_DEPLOYMENT_LOG = $previousLog
+        $env:HG_DEPLOYMENT_QUIET = $previousQuiet
         if ($workRoot -and (Test-Path -LiteralPath $workRoot)) {
             # Nur den fuer diese Sitzung erzeugten Tempordner rekursiv entfernen.
             $resolved = [IO.Path]::GetFullPath($workRoot)
@@ -137,6 +224,3 @@ function Invoke-HGDeploymentPipeline {
         }
     }
 }
-
-
-

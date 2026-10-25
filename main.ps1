@@ -91,7 +91,7 @@ function Show-DeploymentMenu {
     Write-Host "`n  $count von $($Options.Count) Aufgaben ausgewaehlt" -ForegroundColor Cyan
     Write-Host ('  ' + ('-' * 76)) -ForegroundColor DarkGray
     Write-Host '  1-9     Sofort umschalten     A  Alle     N  Keine' -ForegroundColor Gray
-    Write-Host '  Y       Weiter               Q / Esc  Beenden' -ForegroundColor White
+    Write-Host '  Y       Jetzt starten        Q / Esc  Beenden' -ForegroundColor White
     Write-Host "`n  Direkt per Tastendruck bedienen - kein Enter erforderlich."
     Write-Host '  Downloads laufen fortlaufend. Installationen laufen einzeln.' -ForegroundColor DarkGray
     if ($Notice) { Write-Host "`n  $Notice" -ForegroundColor Yellow }
@@ -139,13 +139,6 @@ function Start-ClientDeployment {
                     $notice = 'Bitte mindestens eine Aufgabe auswaehlen.'
                     continue
                 }
-                Write-Host "`nDiese Aufgaben werden in folgender Reihenfolge ausgefuehrt:" -ForegroundColor Cyan
-                $step = 1
-                foreach ($option in $selected) { Write-Host ('  {0,2}. {1}' -f $step,$option.Label); $step++ }
-                Write-Host "`n  Download 1 -> Download 2 -> Download 3 -> ..." -ForegroundColor DarkGray
-                Write-Host '  Installation startet nach dem jeweiligen Download, jeweils einzeln.' -ForegroundColor DarkGray
-                $confirmation = Read-HGMenuKey -Prompt 'Jetzt starten? J = Start | andere Taste = zurueck:'
-                if ($confirmation -notin @('j', 'ja')) { continue }
                 $results = @(Invoke-DeploymentScripts -Options $options -ScriptDirectory $ScriptDirectory)
                 Write-Host "`nAbschlussuebersicht" -ForegroundColor Cyan
                 $results | Format-Table Aufgabe, @{Label='Ergebnis';Expression={
