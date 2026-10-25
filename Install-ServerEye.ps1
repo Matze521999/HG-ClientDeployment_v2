@@ -1,21 +1,11 @@
-function Install-ServerEye {
-    param (
-        [boolean]$InstallServerEye = $true
-    )
+#Requires -Version 5.1
+# Nur Setup-Download: keine Neukonfiguration eines vorhandenen ServerEye-Agents.
+[CmdletBinding()]
+param(
+    [Alias('InstallServerEye')][bool]$Install = $true,
+    [string]$DestinationDirectory = ([Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory))
+)
 
-    if (-not $InstallServerEye) {
-        Write-Host "Der Download von ServerEye wurde nicht gewünscht."
-        return
-    }
-
-    $DownloadUrl = "https://update.server-eye.de/download/se/ServerEyeSetup.exe"
-    $DesktopPath = [Environment]::GetFolderPath("Desktop")
-    $InstallerName = "ServerEyeSetup.exe"
-    $InstallerPath = Join-Path -Path $DesktopPath -ChildPath $InstallerName
-
-    Write-Host "ServerEye wird heruntergeladen..."
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath
-    Write-Host "ServerEye wurde erfolgreich heruntergeladen und befindet sich auf dem Desktop."
-}
-
-Install-ServerEye -InstallServerEye $true
+if (-not $Install) { Write-Host 'ServerEye: Download nicht ausgewaehlt.'; return }
+. (Join-Path $PSScriptRoot 'lib\LatestSoftware.ps1')
+Invoke-HGSoftwareDownload -Software ServerEye -DestinationDirectory $DestinationDirectory

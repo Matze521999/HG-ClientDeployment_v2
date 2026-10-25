@@ -1,94 +1,157 @@
-# Definiere eine Hashtable, um den Status der einzelnen Optionen zu speichern
-$options = @{
-    "7Zip" = $true
-    "AdobeReaderDC" = $true
-    "OpenVPN" = $false
-    "GoogleChrome" = $true
-    "MozillaFirefox" = $false
-    "HGFernwartung" = $true
-    "ServerEye" = $false
-    "OEMInformationen" = $true
-    "WindowsUpdates" = $false
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+Lokales Auswahlmenue fuer das HG-ClientDeployment.
+.DESCRIPTION
+Am besten ueber deploy_client.ps1 starten. Nur Skripte aus diesem Projektordner
+werden ausgefuehrt. Das Sitzungsprotokoll liegt unter %TEMP%\HG-ClientDeployment.
+#>
+. (Join-Path $PSScriptRoot 'lib\LatestSoftware.ps1')
+. (Join-Path $PSScriptRoot 'lib\DeploymentPipeline.ps1')
+
+function Get-DeploymentOptions {
+    # Diese Reihenfolge gilt fuer Anzeige und Ausfuehrung; Updates zuletzt.
+    [pscustomobject]@{ Name = '7Zip'; Label = '7-Zip'; Selected = $true }
+    [pscustomobject]@{ Name = 'AdobeReaderDC'; Label = 'Adobe Reader'; Selected = $true }
+    [pscustomobject]@{ Name = 'GoogleChrome'; Label = 'Google Chrome'; Selected = $true }
+    [pscustomobject]@{ Name = 'MozillaFirefox'; Label = 'Mozilla Firefox'; Selected = $false }
+    [pscustomobject]@{ Name = 'OpenVPN'; Label = 'OpenVPN'; Selected = $false }
+    [pscustomobject]@{ Name = 'HGFernwartung'; Label = 'HG-Fernwartung (Download)'; Selected = $true }
+    [pscustomobject]@{ Name = 'ServerEye'; Label = 'ServerEye (Download)'; Selected = $false }
+    [pscustomobject]@{ Name = 'OEMInformationen'; Label = 'OEM-Informationen'; Selected = $true }
+    [pscustomobject]@{ Name = 'WindowsUpdates'; Label = 'Windows-Updates'; Selected = $false }
 }
 
-# Funktion zum Anzeigen des Menüs
-function ShowMenu {
-    cls
-    Write-Host "`n*******************************************"
-    Write-Host "*    _   _  _____  _____ ______  _____    *"
-    Write-Host "*   | | | ||  __ \/  __ \|  _  \|_   _|   *"
-    Write-Host "*   | |_| || |  \/| /  \/| | | |  | |     *"
-    Write-Host "*   |  _  || | __ | |    | | | |  | |     *"
-    Write-Host "*   | | | || |_\ \| \__/\| |/ /   | |     *"
-    Write-Host "*   \_| |_/ \____/ \____/|___/    \_/     *"
-    Write-Host "*                                         *"
-    Write-Host "*        v5.4          (C) Matze, 2024    *"
-    Write-Host "*******************************************`n"
+function Test-DeploymentAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
 
-    $i = 1
-    foreach ($option in $options.GetEnumerator() | Sort-Object Name) {
-        if ($option.Value) {
-            Write-Host "[$i] - [X] - $($option.Key)" -ForegroundColor Green
-        } else {
-            Write-Host "[$i] - [ ] - $($option.Key)" -ForegroundColor Red
+function Show-DeploymentMenu {
+    param([object[]]$Options, [string]$Notice, [switch]$NoClear)
+    if (-not $NoClear -and -not [Console]::IsOutputRedirected) { Clear-Host }
+    Write-Host ''
+    Write-Host '  HG  /  CLIENT DEPLOYMENT' -ForegroundColor Cyan
+    Write-Host '  Software auswaehlen und den Arbeitsplatz einrichten.' -ForegroundColor DarkGray
+    Write-Host ('  ' + ('-' * 76)) -ForegroundColor DarkGray
+    Write-Host '       AUSWAHL   PROGRAMM                         VERSION / AUFGABE' -ForegroundColor DarkGray
+    $group = ''
+    for ($i = 0; $i -lt $Options.Count; $i++) {
+        $option = $Options[$i]
+        $nextGroup = switch ($option.Name) {
+            { $_ -in @('HGFernwartung','ServerEye') } { 'SUPPORT-DOWNLOADS'; break }
+            { $_ -in @('OEMInformationen','WindowsUpdates') } { 'WINDOWS & EINRICHTUNG'; break }
+            default { 'SOFTWARE' }
         }
-        $i++
+        if ($nextGroup -ne $group) {
+            Write-Host "`n  $nextGroup" -ForegroundColor White
+            $group = $nextGroup
+        }
+        $description = switch ($option.Name) {
+            'OpenVPN' { 'Fest: 2.6.9' }
+            'HGFernwartung' { 'Nur bereitstellen' }
+            'ServerEye' { 'Nur Setup bereitstellen' }
+            'OEMInformationen' { 'Hersteller & Support' }
+            'WindowsUpdates' { 'Zum Schluss ausfuehren' }
+            default { 'Neueste stabile Version' }
+        }
+        $label = $option.Label -replace ' \(Download\)$',''
+        $mark = if ($option.Selected) { '[x]' } else { '[ ]' }
+        $color = if ($option.Selected) { 'Green' } else { 'DarkGray' }
+        Write-Host ('  {0,2}   {1}       {2,-31} {3}' -f ($i + 1),$mark,$label,$description) -ForegroundColor $color
     }
-    Write-Host "`nDruecke die entsprechende Zahl, um eine Option zu aktivieren/deaktivieren." -ForegroundColor Cyan
-    Write-Host "Druecke 'y', die Installation zu starten." -ForegroundColor Cyan
+    $count = @($Options | Where-Object Selected).Count
+    Write-Host "`n  $count von $($Options.Count) Aufgaben ausgewaehlt" -ForegroundColor Cyan
+    Write-Host ('  ' + ('-' * 76)) -ForegroundColor DarkGray
+    Write-Host '  Nummer  Umschalten     A  Alle     N  Keine' -ForegroundColor Gray
+    Write-Host '  Y       Weiter         Q  Beenden' -ForegroundColor White
+    Write-Host "`n  Downloads laufen fortlaufend. Installationen laufen einzeln." -ForegroundColor DarkGray
+    if ($Notice) { Write-Host "`n  $Notice" -ForegroundColor Yellow }
+    Write-Host ''
 }
-
-# Funktion zum Aktivieren/Deaktivieren einer Option
-function ToggleOption {
+function Invoke-DeploymentScripts {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object[]]$Options, [Parameter(Mandatory)][string]$ScriptDirectory)
+    Invoke-HGDeploymentPipeline -Options $Options -ScriptDirectory $ScriptDirectory
+}
+function Start-ClientDeployment {
+    [CmdletBinding()]
     param(
-        [int]$index
+        [string]$ScriptDirectory = $PSScriptRoot,
+        [string]$LogDirectory = (Join-Path $env:TEMP 'HG-ClientDeployment')
     )
-    $optionName = ($options.GetEnumerator() | Sort-Object Name | Select-Object -Index ($index - 1)).Key
-    $options[$optionName] = -not $options[$optionName]
-}
-
-# Funktion zum Ausführen des Skripts entsprechend der ausgewählten Optionen
-function ExecuteSelectedScripts {
-    foreach ($option in $options.GetEnumerator() | Where-Object { $_.Value }) {
-        $scriptName = "Install-" + $option.Key + ".ps1"
-        $scriptURL = "https://raw.githubusercontent.com/Matze521999/HG-ClientDeployment/main/" + $scriptName
-        $scriptPath = Join-Path -Path $env:TEMP -ChildPath $scriptName
-        if (Test-Path $scriptPath) {
-            Write-Host "Fuehre Skript $scriptName aus..." -ForegroundColor Cyan
-            . $scriptPath
-            Remove-Item $scriptPath
-        } else {
-            Write-Host "Lade Skript $scriptName herunter und fuehre es aus..." -ForegroundColor Cyan
-            Invoke-WebRequest -Uri $scriptURL -OutFile $scriptPath
-            . $scriptPath
-            Remove-Item $scriptPath
+    $ErrorActionPreference = 'Stop'
+    $transcriptStarted = $false
+    try {
+        if (-not (Test-DeploymentAdministrator)) {
+            throw 'Administratorrechte fehlen. Bitte deploy_client.ps1 starten oder PowerShell als Administrator oeffnen.'
+        }
+        $null = New-Item -ItemType Directory -Path $LogDirectory -Force
+        $logPath = Join-Path $LogDirectory ('Deployment-{0}-{1}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'), [guid]::NewGuid().ToString('N'))
+        $null = Start-Transcript -LiteralPath $logPath -ErrorAction Stop
+        $transcriptStarted = $true
+        Write-Host "Sitzungsprotokoll: $logPath"
+        $options = @(Get-DeploymentOptions)
+        $notice = ''
+        while ($true) {
+            Show-DeploymentMenu -Options $options -Notice $notice
+            $notice = ''
+            $choice = (Read-Host 'Auswahl').Trim().ToLowerInvariant()
+            if ($choice -in @('q', 'abbrechen')) {
+                Write-Host 'Deployment abgebrochen. Es wurden keine Installationsskripte gestartet.'
+                return
+            }
+            if ($choice -in @('a','n')) {
+                foreach ($option in $options) { $option.Selected = ($choice -eq 'a') }
+                continue
+            }
+            if ($choice -eq 'y') {
+                $selected = @($options | Where-Object { $_.Selected })
+                if ($selected.Count -eq 0) {
+                    $notice = 'Bitte mindestens eine Aufgabe auswaehlen.'
+                    continue
+                }
+                Write-Host "`nDiese Aufgaben werden in folgender Reihenfolge ausgefuehrt:" -ForegroundColor Cyan
+                $step = 1
+                foreach ($option in $selected) { Write-Host ('  {0,2}. {1}' -f $step,$option.Label); $step++ }
+                Write-Host "`n  Download 1 -> Download 2 -> Download 3 -> ..." -ForegroundColor DarkGray
+                Write-Host '  Installation startet nach dem jeweiligen Download, jeweils einzeln.' -ForegroundColor DarkGray
+                $confirmation = (Read-Host 'Jetzt starten? J = Start, jede andere Eingabe = zurueck zum Menue').Trim().ToLowerInvariant()
+                if ($confirmation -notin @('j', 'ja')) { continue }
+                $results = @(Invoke-DeploymentScripts -Options $options -ScriptDirectory $ScriptDirectory)
+                Write-Host "`nAbschlussuebersicht" -ForegroundColor Cyan
+                $results | Format-Table Aufgabe, @{Label='Ergebnis';Expression={
+                    switch ($_.Status) {
+                        'BereitsAktuell' { 'Bereits aktuell' }
+                        'BereitsHeruntergeladen' { 'Datei vorhanden' }
+                        'Heruntergeladen' { 'Datei bereit' }
+                        'NeustartAusstehend' { 'Neustart offen' }
+                        'Uebersprungen' { 'Nicht ausgewaehlt' }
+                        default { $_.Status }
+                    }
+                }}, Version, Sekunden -AutoSize | Out-Host
+                foreach ($result in $results | Where-Object { $_.Status -eq 'Fehlgeschlagen' }) {
+                    Write-Host "$($result.Aufgabe): $($result.Details)" -ForegroundColor Red
+                }
+                if (@($results | Where-Object RebootRequired).Count -gt 0) { Write-Host '  Ein Neustart ist erforderlich. Bitte nach Abschluss neu starten.' -ForegroundColor Yellow }
+                if (@($results | Where-Object { $_.Status -eq 'Durchgelaufen' }).Count -gt 0) { Write-Host '  Durchgelaufen: Skript ohne gemeldeten Fehler; keine zentrale Erfolgskontrolle.' -ForegroundColor DarkGray }
+                Write-Host "Vollstaendiges Sitzungsprotokoll: $logPath"
+                $null = Read-Host 'Enter zum Beenden'
+                return
+            }
+            $index = 0
+            if ([int]::TryParse($choice, [ref]$index) -and $index -ge 1 -and $index -le $options.Count) {
+                $options[$index - 1].Selected = -not $options[$index - 1].Selected
+            }
+            else {
+                $notice = "Bitte eine Nummer von 1 bis $($options.Count), A, N, Y oder Q eingeben."
+            }
         }
     }
-
-    # Führe Send-ExecutionInfoEmail.ps1 aus
-    #$infoScriptURL = "https://raw.githubusercontent.com/Matze521999/HG-ClientDeployment/main/Send-ExecutionInfoEmail.ps1"
-    #$infoScriptPath = Join-Path -Path $env:TEMP -ChildPath "Send-ExecutionInfoEmail.ps1"
-    #if (-not (Test-Path $infoScriptPath)) {
-    #    Write-Host "Sende Telemetriedaten..." -ForegroundColor Cyan
-    #    Invoke-WebRequest -Uri $infoScriptURL -OutFile $infoScriptPath
-    #    . $infoScriptPath
-    #    Remove-Item $infoScriptPath
-    #}
-}
-
-# Hauptprogramm
-while ($true) {
-    ShowMenu
-    $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown").VirtualKeyCode
-    if ($key -eq 89) { # Y-Key
-        ExecuteSelectedScripts
-        Write-Host "Druecke eine beliebige Taste, um fortzufahren..."
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-        break
-    } elseif ($key -ge 49 -and $key -le 57) { # Zahlen 1 bis 9
-        $index = $key - 48  # 48 ist der ASCII-Wert von '0'
-        ToggleOption $index
-    } else {
-        Write-Host "`nUngueltige Eingabe. Bitte wähle eine Option aus dem Menue oder druecke 'y' zum Bestaetigen." -ForegroundColor Yellow
+    finally {
+        if ($transcriptStarted) { $null = Stop-Transcript }
     }
 }
+
+Start-ClientDeployment

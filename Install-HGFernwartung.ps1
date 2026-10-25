@@ -1,37 +1,11 @@
-function Install-HGFernwartung {
-    param (
-        [boolean]$InstallHGFernwartung = $true
-    )
+#Requires -Version 5.1
+# Nur Download: Die HG-Fernwartung wird nicht gestartet oder installiert.
+[CmdletBinding()]
+param(
+    [Alias('InstallHGFernwartung')][bool]$Install = $true,
+    [string]$DestinationDirectory = ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory))
+)
 
-    $SoftwareName = "HG Fernwartung"
-
-    if (-not $InstallHGFernwartung) {
-        Write-Host "$SoftwareName wird nicht heruntergeladen, da die Installation nicht gewünscht ist."
-        return
-    }
-
-    $PublicDesktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::CommonDesktopDirectory)
-    $Installer = "HG-Fernwartung.exe"
-    $DownloadUrl = "https://www.helpme.de/fileadmin/fernwartung/HG-Fernwartung.exe"
-
-    Write-Host "$SoftwareName wird heruntergeladen..."
-
-    Invoke-WebRequest $DownloadUrl -OutFile "$PublicDesktopPath\$Installer"
-    Write-Host "$SoftwareName wurde erfolgreich heruntergeladen."
-
-    Write-Host "$SoftwareName wird installiert..."
-
-    if (Test-Path "$PublicDesktopPath\$Installer") {
-        Write-Host "$SoftwareName wird auf dem öffentlichen Desktop installiert."
-    }
-    else {
-        Write-Host "Fehler beim Herunterladen von $SoftwareName."
-        return
-    }
-
-    # Führe hier den Installationsprozess durch, falls erforderlich
-
-    Write-Host "$SoftwareName wurde erfolgreich installiert."
-}
-
-Install-HGFernwartung -InstallHGFernwartung $true
+if (-not $Install) { Write-Host 'HG-Fernwartung: Download nicht ausgewaehlt.'; return }
+. (Join-Path $PSScriptRoot 'lib\LatestSoftware.ps1')
+Invoke-HGSoftwareDownload -Software HGFernwartung -DestinationDirectory $DestinationDirectory
