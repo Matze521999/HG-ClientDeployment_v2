@@ -28,6 +28,32 @@ function Test-DeploymentAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Get-HGConsoleKey {
+    try { return $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') }
+    catch { throw 'Die direkte Tastenauswahl benoetigt eine interaktive PowerShell-Konsole. Bitte deploy_client.ps1 in powershell.exe starten.' }
+}
+
+function Read-HGMenuKey {
+    param([string]$Prompt)
+    Write-Host "  $Prompt " -NoNewline -ForegroundColor Cyan
+    while ($true) {
+        $key = Get-HGConsoleKey
+        # Modifier-Tasten und Kombinationen wie Alt+A nicht als Menuebefehl werten.
+        if (([int]$key.ControlKeyState -band 15) -ne 0) { continue }
+        if ($key.VirtualKeyCode -eq 27) { Write-Host 'Esc'; return 'q' }
+        # Zahlenblock unterstuetzen, auch wenn der Host kein Zeichen liefert.
+        if ($key.VirtualKeyCode -ge 96 -and $key.VirtualKeyCode -le 105) {
+            $choice = [string]($key.VirtualKeyCode - 96)
+        }
+        elseif ([string]$key.Character -match '^[a-zA-Z0-9]$') {
+            $choice = ([string]$key.Character).ToLowerInvariant()
+        }
+        else { continue } # Enter, Pfeil- und reine Umschalttasten ignorieren.
+        Write-Host $choice
+        return $choice
+    }
+}
+
 function Show-DeploymentMenu {
     param([object[]]$Options, [string]$Notice, [switch]$NoClear)
     if (-not $NoClear -and -not [Console]::IsOutputRedirected) { Clear-Host }
@@ -64,9 +90,10 @@ function Show-DeploymentMenu {
     $count = @($Options | Where-Object Selected).Count
     Write-Host "`n  $count von $($Options.Count) Aufgaben ausgewaehlt" -ForegroundColor Cyan
     Write-Host ('  ' + ('-' * 76)) -ForegroundColor DarkGray
-    Write-Host '  Nummer  Umschalten     A  Alle     N  Keine' -ForegroundColor Gray
-    Write-Host '  Y       Weiter         Q  Beenden' -ForegroundColor White
-    Write-Host "`n  Downloads laufen fortlaufend. Installationen laufen einzeln." -ForegroundColor DarkGray
+    Write-Host '  1-9     Sofort umschalten     A  Alle     N  Keine' -ForegroundColor Gray
+    Write-Host '  Y       Weiter               Q / Esc  Beenden' -ForegroundColor White
+    Write-Host "`n  Direkt per Tastendruck bedienen - kein Enter erforderlich."
+    Write-Host '  Downloads laufen fortlaufend. Installationen laufen einzeln.' -ForegroundColor DarkGray
     if ($Notice) { Write-Host "`n  $Notice" -ForegroundColor Yellow }
     Write-Host ''
 }
@@ -97,7 +124,7 @@ function Start-ClientDeployment {
         while ($true) {
             Show-DeploymentMenu -Options $options -Notice $notice
             $notice = ''
-            $choice = (Read-Host 'Auswahl').Trim().ToLowerInvariant()
+            $choice = Read-HGMenuKey -Prompt 'Auswahl:'
             if ($choice -in @('q', 'abbrechen')) {
                 Write-Host 'Deployment abgebrochen. Es wurden keine Installationsskripte gestartet.'
                 return
@@ -117,7 +144,7 @@ function Start-ClientDeployment {
                 foreach ($option in $selected) { Write-Host ('  {0,2}. {1}' -f $step,$option.Label); $step++ }
                 Write-Host "`n  Download 1 -> Download 2 -> Download 3 -> ..." -ForegroundColor DarkGray
                 Write-Host '  Installation startet nach dem jeweiligen Download, jeweils einzeln.' -ForegroundColor DarkGray
-                $confirmation = (Read-Host 'Jetzt starten? J = Start, jede andere Eingabe = zurueck zum Menue').Trim().ToLowerInvariant()
+                $confirmation = Read-HGMenuKey -Prompt 'Jetzt starten? J = Start | andere Taste = zurueck:'
                 if ($confirmation -notin @('j', 'ja')) { continue }
                 $results = @(Invoke-DeploymentScripts -Options $options -ScriptDirectory $ScriptDirectory)
                 Write-Host "`nAbschlussuebersicht" -ForegroundColor Cyan

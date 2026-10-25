@@ -18,6 +18,24 @@ Assert (($menu -join "`n") -match 'SUPPORT-DOWNLOADS' -and ($menu -join "`n") -m
 Assert (@($menu | Where-Object { $_ -match '^\s+\d+\s+\[[x ]\]' }).Count -eq 9) 'Menue muss neun ausgerichtete Auswahlzeilen enthalten'
 Assert (@($menu | Where-Object { $_.Length -gt 80 }).Count -eq 0) 'Menue passt nicht in ein 80-Zeichen-Fenster'
 Write-Host 'PASS: Menuegruppen, Auswahlzeilen und Breite'
+function Get-HGConsoleKey {
+    if($script:keyEvents.Count -eq 0){throw 'Unerwartete weitere Tastenabfrage'}
+    $script:keyEvents.Dequeue()
+}
+function KeyEvent {param($Code,$Character='',[int]$Modifiers=0) [pscustomobject]@{VirtualKeyCode=$Code;Character=$Character;ControlKeyState=$Modifiers}}
+foreach($case in @(
+    @{Keys=@((KeyEvent 49 '1')); Expected='1'},
+    @{Keys=@((KeyEvent 97)); Expected='1'},
+    @{Keys=@((KeyEvent 65 'A')); Expected='a'},
+    @{Keys=@((KeyEvent 27)); Expected='q'},
+    @{Keys=@((KeyEvent 13 "`r"),(KeyEvent 16),(KeyEvent 65 'a' 8),(KeyEvent 51 '3')); Expected='3'}
+)) {
+    $script:keyEvents=[Collections.Generic.Queue[object]]::new()
+    foreach($event in $case.Keys){$script:keyEvents.Enqueue($event)}
+    $key=Read-HGMenuKey -Prompt 'Testtaste:'
+    Assert ($key -eq $case.Expected -and $script:keyEvents.Count -eq 0) 'Direkte Tastenauswahl, Zahlenblock, Escape oder ignorierte Steuertasten falsch'
+}
+Write-Host 'PASS: Direkte Tasten ohne Enter, Zahlenblock, Grossbuchstaben, Escape und Steuertasten'
 
 $fixture = Join-Path $PSScriptRoot ('fixture-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $fixture
@@ -46,6 +64,7 @@ try {
     function Start-Transcript { param($LiteralPath, $ErrorAction) $script:transcriptStarts++; $script:capturedLogPath = $LiteralPath }
     function Stop-Transcript { $script:transcriptStops++ }
     function Show-DeploymentMenu { param($Options) }
+    function Read-HGMenuKey { param($Prompt) if ($script:answers.Count -eq 0) { throw "Unerwartete Tastenabfrage: $Prompt" }; $key=$script:answers.Dequeue(); if($key.Length -ne 1){throw 'Menue darf keine Zeileneingabe benoetigen'}; $key }
     function Read-Host { param($Prompt) if ($script:answers.Count -eq 0) { throw "Unerwartete Abfrage: $Prompt" }; $script:answers.Dequeue() }
     function Invoke-DeploymentScripts { param($Options, $ScriptDirectory) $script:runCount++; $script:chosen = @($Options | Where-Object Selected) }
     function Run-Menu {
@@ -63,11 +82,13 @@ try {
     Assert ($script:runCount -eq 0) 'Alle/Keine duerfen keine Installation starten'
     Run-Menu -Answers @('q')
     Assert ($script:runCount -eq 0) 'Abbruch hat Installer gestartet'
-    Run-Menu -Answers @('y', 'nein', 'q')
+    Run-Menu -Answers @('y', 'n', 'q')
     Assert ($script:runCount -eq 0) 'Ohne Bestaetigung gestartet'
-    Run-Menu -Answers @('0', '10', 'abc', '9', 'y', 'j', '')
+    Run-Menu -Answers @('0', 'x', '9', 'y', 'j', '')
     Assert ($script:runCount -eq 1) 'Bestaetigte Auswahl nicht gestartet'
     Assert ($script:chosen[-1].Name -eq 'WindowsUpdates') 'Nummer 9 wurde nicht aktiviert'
+    Run-Menu -Answers @('4','4','4','y','j','')
+    Assert (@($script:chosen | Where-Object Name -eq 'MozillaFirefox').Count -eq 1) 'Schnelle wiederholte Tastendruecke muessen sofort umschalten'
     Run-Menu -Answers @('1', '2', '3', '6', '8', 'y', 'q')
     Assert ($script:runCount -eq 0) 'Leere Auswahl gestartet'
     $script:testAdmin = $false; $script:transcriptStarts = 0
@@ -85,5 +106,3 @@ finally {
     Remove-Item -LiteralPath $fixture -Force
     Remove-Variable -Name DeploymentTestOrder -Scope Global -ErrorAction SilentlyContinue
 }
-
-
