@@ -7,8 +7,6 @@ Laedt den vollstaendigen main-Stand des oeffentlichen GitHub-Repositories als
 ZIP in einen eigenen Tempordner. Menue, Installer und lib bleiben zusammen.
 Nach Ende des Deployments wird dieser Ordner entfernt; Protokolle bleiben erhalten.
 Mit -UseLocal wird stattdessen eine vollstaendige lokale Arbeitskopie verwendet.
-Fuer die EXE muss beim Kompilieren die Anforderung von Administratorrechten
-aktiviert werden (bei PS2EXE: -requireAdmin).
 .EXAMPLE
 Invoke-ps2exe .\deploy_client.ps1 .\deploy_client.exe -requireAdmin
 .EXAMPLE
