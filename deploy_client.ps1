@@ -8,8 +8,6 @@ ZIP in einen eigenen Tempordner. Menue, Installer und lib bleiben zusammen.
 Nach Ende des Deployments wird dieser Ordner entfernt; Protokolle bleiben erhalten.
 Mit -UseLocal wird stattdessen eine vollstaendige lokale Arbeitskopie verwendet.
 .EXAMPLE
-Invoke-ps2exe .\deploy_client.ps1 .\deploy_client.exe -requireAdmin
-.EXAMPLE
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy_client.ps1
 .EXAMPLE
 .\deploy_client.ps1 -UseLocal
