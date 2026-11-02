@@ -7,6 +7,10 @@ Laedt den vollstaendigen main-Stand des oeffentlichen GitHub-Repositories als
 ZIP in einen eigenen Tempordner. Menue, Installer und lib bleiben zusammen.
 Nach Ende des Deployments wird dieser Ordner entfernt; Protokolle bleiben erhalten.
 Mit -UseLocal wird stattdessen eine vollstaendige lokale Arbeitskopie verwendet.
+Fuer die EXE muss beim Kompilieren die Anforderung von Administratorrechten
+aktiviert werden (bei PS2EXE: -requireAdmin).
+.EXAMPLE
+Invoke-ps2exe .\deploy_client.ps1 .\deploy_client.exe -requireAdmin
 .EXAMPLE
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy_client.ps1
 .EXAMPLE
@@ -14,6 +18,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy_client.ps1
 #>
 [CmdletBinding()]
 param([switch]$UseLocal)
+
+# Die EXE laedt weitere PS1-Dateien. Bypass gilt nur fuer diesen Prozess;
+# per Gruppenrichtlinie erzwungene Einstellungen behalten ihren Vorrang.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop
 
 function Test-HGBootstrapAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
