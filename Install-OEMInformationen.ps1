@@ -19,13 +19,13 @@ function Set-OEMInformation {
     )
 
     # Logo herunterladen
-    $LogoUrl = "https://share.example.com/index.php/s/jjprHzbgWoSW5rb/download/helpme.bmp"
-    $LogoPath = "C:\Windows\System32\oemlogo.bmp"
+    #$LogoUrl = "https://share.example.com/index.php/s/jjprHzbgWoSW5rb/download/helpme.bmp"
+    #$LogoPath = "C:\Windows\System32\oemlogo.bmp"
 
     # Bild herunterladen
-    Invoke-WebRequest -Uri $LogoUrl -OutFile $LogoPath
+    #Invoke-WebRequest -Uri $LogoUrl -OutFile $LogoPath
 
-    $KeyValues[5] = $LogoPath
+    #$KeyValues[5] = $LogoPath
 
     for ($i = 0; $i -lt $KeyNames.Count; $i++) {
         Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation" -Name $KeyNames[$i] -Value $KeyValues[$i]
