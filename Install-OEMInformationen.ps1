@@ -12,7 +12,7 @@ function Set-OEMInformation {
     $KeyValues = @(
         "helpme!group - PC Help IT GmbH & Co. KG",
         "Montag bis Freitag, 08:00 - 17:00 Uhr",
-        "+49 000 000000",
+        "+49 831 960 787 0",
         "http://www.helpme.de",
         "",
         "" # Hier wird der Pfad zum Logo platziert
