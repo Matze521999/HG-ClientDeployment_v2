@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# OpenVPN bleibt gezielt auf 2.6.9-I001 festgelegt, unabhaengig von neuen Releases.
+# OpenVPN bleibt gezielt auf 2.6.23-I002 festgelegt, unabhaengig von neuen Releases.
 [CmdletBinding()]
 param([Alias('InstallOpenVPN')][bool]$Install = $true)
 

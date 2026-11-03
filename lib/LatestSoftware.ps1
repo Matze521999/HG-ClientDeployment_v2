@@ -90,9 +90,9 @@ function Get-HGPackage {
             # Bewusst festgeschrieben: keine automatische Auswahl neuer Releases.
             $platform = switch ($Architecture) { 'x64' { 'amd64' }; 'arm64' { 'arm64' }; 'x86' { 'x86' } }
             return [pscustomobject]@{
-                Url = "https://build.openvpn.net/downloads/releases/OpenVPN-2.6.9-I001-$platform.msi"
-                Version = [version]'2.6.9.0'
-                MsiVersion = [version]'2.6.901.0'
+				Url = "https://build.openvpn.net/downloads/releases/OpenVPN-2.6.23-I002-$platform.msi"
+                Version = [version]'2.6.23.0'
+                MsiVersion = [version]'2.6.2302.0'
                 Hash = $null
                 Signer = 'OpenVPN Inc\.'
                 Extension = 'msi'
