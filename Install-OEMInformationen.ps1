@@ -15,17 +15,8 @@ function Set-OEMInformation {
         "+49 831 960 787 0",
         "http://www.helpme.de",
         "",
-        "" # Hier wird der Pfad zum Logo platziert
+        "" # Logo gibts ab Win11 nicht mehr, daher nicht mehr implementiert
     )
-
-    # Logo herunterladen
-    #$LogoUrl = "https://share.example.com/index.php/s/jjprHzbgWoSW5rb/download/helpme.bmp"
-    #$LogoPath = "C:\Windows\System32\oemlogo.bmp"
-
-    # Bild herunterladen
-    #Invoke-WebRequest -Uri $LogoUrl -OutFile $LogoPath
-
-    #$KeyValues[5] = $LogoPath
 
     for ($i = 0; $i -lt $KeyNames.Count; $i++) {
         Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation" -Name $KeyNames[$i] -Value $KeyValues[$i]
